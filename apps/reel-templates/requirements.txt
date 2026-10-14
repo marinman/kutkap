@@ -1,0 +1,7 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+faster-whisper==1.1.1
+requests==2.34.2
+# Keep yt-dlp current: sites change often. `pip install -U yt-dlp` when downloads break.
+yt-dlp>=2026.08.19
+anthropic==1.13.0
