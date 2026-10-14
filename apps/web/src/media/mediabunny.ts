@@ -130,7 +130,7 @@ export const extractTimelineAudio = async ({
 	return createWavBlob({ samples: interleavedSamples });
 };
 
-function interleaveAudioBuffer({
+export function interleaveAudioBuffer({
 	audioBuffer,
 }: {
 	audioBuffer: AudioBuffer;
@@ -151,7 +151,7 @@ function interleaveAudioBuffer({
 	return interleavedSamples;
 }
 
-function createWavBlob({ samples }: { samples: Float32Array }): Blob {
+export function createWavBlob({ samples }: { samples: Float32Array }): Blob {
 	const numChannels = NUM_CHANNELS;
 	const bitsPerSample = 16;
 	const bytesPerSample = bitsPerSample / 8;

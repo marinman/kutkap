@@ -20,6 +20,11 @@ import type {
 import { transcriptionService } from "@/services/transcription/service";
 import { decodeAudioToFloat32 } from "@/media/audio";
 import { buildCaptionChunks } from "@/transcription/caption";
+import { buildWordCaptions } from "@/transcription/word-captions";
+import {
+	isLocalServiceAvailable,
+	transcribeWithLocalService,
+} from "@/services/transcription/local-service";
 import { insertCaptionChunksAsTextTrack } from "@/subtitles/insert";
 import { parseSubtitleFile } from "@/subtitles/parse";
 import {
@@ -157,35 +162,54 @@ export function Captions() {
 				totalDuration: editor.timeline.getTotalDuration(),
 			});
 
-			dispatch({ type: "update_step", step: "Preparing audio..." });
-			const { samples } = await decodeAudioToFloat32({
-				audioBlob,
-				sampleRate: DEFAULT_TRANSCRIPTION_SAMPLE_RATE,
+			const language =
+				selectedLanguage === "auto" ? undefined : selectedLanguage;
+			const maxSeconds = mediaTimeToSeconds({
+				time: editor.timeline.getTotalDuration(),
 			});
+			const warnings: string[] = [];
+			let captionChunks: SubtitleCue[];
 
-			const result = await transcriptionService.transcribe({
-				audioData: samples,
-				language: selectedLanguage === "auto" ? undefined : selectedLanguage,
-				onProgress: handleProgress,
-			});
+			if (await isLocalServiceAvailable()) {
+				dispatch({ type: "update_step", step: "Transcribing words..." });
+				const words = await transcribeWithLocalService({ audioBlob, language });
+				captionChunks = buildWordCaptions({
+					words,
+					wordsPerCaption,
+					maxSeconds,
+				});
+			} else {
+				// Browser fallback: only sentence-level timings, so word timing is estimated.
+				warnings.push(
+					"Kutkap's transcription service isn't running, so caption timing is approximate. Open Kutkap from its app icon for word-accurate captions.",
+				);
+				dispatch({ type: "update_step", step: "Preparing audio..." });
+				const { samples } = await decodeAudioToFloat32({
+					audioBlob,
+					sampleRate: DEFAULT_TRANSCRIPTION_SAMPLE_RATE,
+				});
+				const result = await transcriptionService.transcribe({
+					audioData: samples,
+					language,
+					onProgress: handleProgress,
+				});
+				captionChunks = clampCaptionsToDuration({
+					captions: buildCaptionChunks({
+						segments: result.segments,
+						wordsPerChunk: wordsPerCaption,
+					}),
+					maxSeconds,
+				});
+			}
 
 			dispatch({ type: "update_step", step: "Generating captions..." });
-			const captionChunks = clampCaptionsToDuration({
-				captions: buildCaptionChunks({
-					segments: result.segments,
-					wordsPerChunk: wordsPerCaption,
-				}),
-				maxSeconds: mediaTimeToSeconds({
-					time: editor.timeline.getTotalDuration(),
-				}),
-			});
 
 			if (!(await insertCaptions({ captions: captionChunks }))) {
 				dispatch({ type: "fail", error: "No captions were generated" });
 				return;
 			}
 
-			dispatch({ type: "succeed", warnings: [] });
+			dispatch({ type: "succeed", warnings });
 		} catch (error) {
 			console.error("Transcription failed:", error);
 			dispatch({

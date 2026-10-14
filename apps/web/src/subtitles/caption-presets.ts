@@ -83,7 +83,7 @@ export const CAPTION_PRESETS: CaptionPreset[] = [
 
 export const DEFAULT_CAPTION_PRESET_ID = "classic";
 
-export const WORDS_PER_CAPTION_OPTIONS = [1, 2, 3, 5, 8] as const;
+export const WORDS_PER_CAPTION_OPTIONS = [1, 2, 3, 4] as const;
 
 export function getCaptionPreset({ id }: { id: string }): CaptionPreset {
 	return CAPTION_PRESETS.find((preset) => preset.id === id) ?? CAPTION_PRESETS[0];
