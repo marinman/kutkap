@@ -7,14 +7,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { extractTimelineAudio } from "@/media/mediabunny";
 import { useEditor } from "@/editor/use-editor";
 import { TRANSCRIPTION_DIAGNOSTICS_SCOPE } from "@/transcription/diagnostics";
 import { DEFAULT_TRANSCRIPTION_SAMPLE_RATE } from "@/transcription/audio";
 import { TRANSCRIPTION_LANGUAGES } from "@/transcription/supported-languages";
 import type {
-	CaptionChunk,
 	TranscriptionLanguage,
 	TranscriptionProgress,
 } from "@/transcription/types";
@@ -23,6 +22,20 @@ import { decodeAudioToFloat32 } from "@/media/audio";
 import { buildCaptionChunks } from "@/transcription/caption";
 import { insertCaptionChunksAsTextTrack } from "@/subtitles/insert";
 import { parseSubtitleFile } from "@/subtitles/parse";
+import {
+	CAPTION_PRESETS,
+	DEFAULT_CAPTION_PRESET_ID,
+	WORDS_PER_CAPTION_OPTIONS,
+	applyCaptionPreset,
+	clampCaptionsToDuration,
+	getCaptionPreset,
+	getCaptionPresetFonts,
+} from "@/subtitles/caption-presets";
+import type { SubtitleCue } from "@/subtitles/types";
+import { loadFonts } from "@/fonts/google-fonts";
+import { DEFAULT_WORDS_PER_CAPTION } from "@/transcription/caption-defaults";
+import { cn } from "@/utils/ui";
+import { mediaTimeToSeconds } from "@/wasm";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	Section,
@@ -86,10 +99,22 @@ function processingReducer(
 export function Captions() {
 	const [selectedLanguage, setSelectedLanguage] =
 		useState<TranscriptionLanguage>("auto");
+	const [presetId, setPresetId] = useState(DEFAULT_CAPTION_PRESET_ID);
+	const [wordsPerCaption, setWordsPerCaption] = useState<number>(
+		DEFAULT_WORDS_PER_CAPTION,
+	);
 	const [processing, dispatch] = useReducer(processingReducer, IDLE_STATE);
 	const containerRef = useRef<HTMLDivElement>(null);
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const editor = useEditor();
+
+	useEffect(() => {
+		void loadFonts({
+			families: CAPTION_PRESETS.flatMap((preset) =>
+				getCaptionPresetFonts({ preset }),
+			),
+		});
+	}, []);
 
 	const isProcessing = processing.status === "processing";
 
@@ -108,12 +133,18 @@ export function Captions() {
 		}
 	};
 
-	const insertCaptions = ({
+	const insertCaptions = async ({
 		captions,
 	}: {
-		captions: CaptionChunk[];
-	}): boolean => {
-		const trackId = insertCaptionChunksAsTextTrack({ editor, captions });
+		captions: SubtitleCue[];
+	}): Promise<boolean> => {
+		const preset = getCaptionPreset({ id: presetId });
+		// Fonts must be loaded before layout so caption wrapping is measured correctly.
+		await loadFonts({ families: getCaptionPresetFonts({ preset }) });
+		const trackId = insertCaptionChunksAsTextTrack({
+			editor,
+			captions: applyCaptionPreset({ captions, preset }),
+		});
 		return trackId !== null;
 	};
 
@@ -139,9 +170,17 @@ export function Captions() {
 			});
 
 			dispatch({ type: "update_step", step: "Generating captions..." });
-			const captionChunks = buildCaptionChunks({ segments: result.segments });
+			const captionChunks = clampCaptionsToDuration({
+				captions: buildCaptionChunks({
+					segments: result.segments,
+					wordsPerChunk: wordsPerCaption,
+				}),
+				maxSeconds: mediaTimeToSeconds({
+					time: editor.timeline.getTotalDuration(),
+				}),
+			});
 
-			if (!insertCaptions({ captions: captionChunks })) {
+			if (!(await insertCaptions({ captions: captionChunks }))) {
 				dispatch({ type: "fail", error: "No captions were generated" });
 				return;
 			}
@@ -182,7 +221,7 @@ export function Captions() {
 
 			dispatch({ type: "update_step", step: "Importing subtitles..." });
 
-			if (!insertCaptions({ captions: result.captions })) {
+			if (!(await insertCaptions({ captions: result.captions }))) {
 				dispatch({ type: "fail", error: "No captions were generated" });
 				return;
 			}
@@ -306,6 +345,54 @@ export function Captions() {
 									))}
 								</SelectContent>
 							</Select>
+						</SectionField>
+						<SectionField label="Words per caption">
+							<Select
+								value={String(wordsPerCaption)}
+								onValueChange={(value) => setWordsPerCaption(Number(value))}
+							>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{WORDS_PER_CAPTION_OPTIONS.map((count) => (
+										<SelectItem key={count} value={String(count)}>
+											{count === 1 ? "1 (word by word)" : count}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</SectionField>
+						<SectionField label="Style">
+							<div className="grid grid-cols-2 gap-2">
+								{CAPTION_PRESETS.map((preset) => (
+									<button
+										key={preset.id}
+										type="button"
+										onClick={() => setPresetId(preset.id)}
+										aria-pressed={presetId === preset.id}
+										className={cn(
+											"flex h-14 items-center justify-center rounded-md border bg-neutral-800 text-xs transition-colors",
+											presetId === preset.id
+												? "border-primary ring-primary ring-1"
+												: "border-border hover:border-muted-foreground",
+										)}
+									>
+										<span
+											className="rounded px-1.5 py-0.5 font-bold"
+											style={{
+												color: preset.preview.text,
+												backgroundColor: preset.preview.background,
+												fontFamily: preset.style.fontFamily,
+											}}
+										>
+											{preset.uppercase
+												? preset.label.toUpperCase()
+												: preset.label}
+										</span>
+									</button>
+								))}
+							</div>
 						</SectionField>
 					</SectionFields>
 
