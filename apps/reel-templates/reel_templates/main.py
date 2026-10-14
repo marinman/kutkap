@@ -11,7 +11,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analyze, downloader, export, store
+from . import analyze, downloader, export, llm, store
 from .config import DATA_DIR, LONG_VIDEO_SECONDS, ensure_dirs, load_settings, save_settings
 from .jobs import UserFacingError, get_job, start_job
 
@@ -220,21 +220,25 @@ async def transcribe_audio(request: Request, language: str = ""):
 
 @app.get("/api/settings")
 def get_settings():
-    settings = load_settings()
-    return {**settings, "llm_api_key": "set" if settings["llm_api_key"] else ""}
+    return load_settings()
 
 
 @app.put("/api/settings")
 def update_settings(body: dict):
-    if body.get("llm_api_key") == "set":
-        body.pop("llm_api_key")  # unchanged placeholder from the UI
-    settings = save_settings(body)
-    return {**settings, "llm_api_key": "set" if settings["llm_api_key"] else ""}
+    return save_settings(body)
+
+
+@app.get("/api/ollama/models")
+def ollama_models():
+    try:
+        return {"models": llm.list_models(load_settings()["ollama_url"])}
+    except llm.OllamaUnavailable as error:
+        raise _error(503, str(error)) from error
 
 
 # Files + UI --------------------------------------------------------------------
 
-# Only media folders are served; settings.json (which may hold an API key) is not.
+# Only media folders are served, never settings.json or the downloads index.
 for _folder in ("downloads", "frames", "templates/audio"):
     (DATA_DIR / _folder).mkdir(parents=True, exist_ok=True)
     app.mount(f"/files/{_folder}", StaticFiles(directory=DATA_DIR / _folder), name=f"files-{_folder}")

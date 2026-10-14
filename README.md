@@ -35,7 +35,7 @@ python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/uvicorn reel_templates.main:app --port 3518   # http://localhost:3518
 ```
 
-Downloads, keyframes and templates are stored in `~/Kutkap` (`downloads/`, `frames/`, `templates/`). Optional AI shot labeling (off by default) uses an Anthropic API key entered in Settings.
+Downloads, keyframes and templates are stored in `~/Kutkap` (`downloads/`, `frames/`, `templates/`). Optional AI shot labeling (off by default) runs on your local [Ollama](https://ollama.com) (default model `qwen3:8b`, pick any installed model in Settings), so nothing leaves your computer.
 
 ### Install the Mac app
 

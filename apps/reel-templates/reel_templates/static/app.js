@@ -422,11 +422,25 @@ async function renderSettings() {
         </div>
       </div>
       <div class="card stack">
-        <label class="row"><input type="checkbox" name="llm_enabled" ${settings.llm_enabled ? "checked" : ""} /> <b>AI shot labeling</b> <span class="muted">(optional, off by default; sends the transcript and on-screen text to Anthropic)</span></label>
-        <label class="field"><span>Anthropic API key</span><input type="password" name="llm_api_key" value="${esc(settings.llm_api_key)}" placeholder="sk-ant-…" autocomplete="off" /></label>
+        <label class="row"><input type="checkbox" name="llm_enabled" ${settings.llm_enabled ? "checked" : ""} /> <b>AI shot labeling</b> <span class="muted">(optional, off by default; runs on your local Ollama, nothing leaves this computer)</span></label>
+        <div class="grid-2">
+          <label class="field"><span>Ollama model</span><select name="ollama_model" id="ollama-model"><option>${esc(settings.ollama_model)}</option></select></label>
+          <label class="field"><span>Ollama address</span><input type="text" name="ollama_url" value="${esc(settings.ollama_url)}" /></label>
+        </div>
+        <div id="ollama-status" class="muted"></div>
       </div>
       <div class="row"><span class="grow"></span><button class="primary" type="submit">Save settings</button></div>
     </form>`;
+
+  try {
+    const { models } = await api("/api/ollama/models");
+    const select = view.querySelector("#ollama-model");
+    const choices = models.includes(settings.ollama_model) ? models : [settings.ollama_model, ...models];
+    select.innerHTML = choices.map((m) => `<option ${m === settings.ollama_model ? "selected" : ""}>${esc(m)}</option>`).join("");
+    if (!models.length) view.querySelector("#ollama-status").textContent = "No chat models installed. Run: ollama pull qwen3:8b";
+  } catch (error) {
+    view.querySelector("#ollama-status").textContent = error.message;
+  }
 
   view.querySelector("#settings-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -438,7 +452,8 @@ async function renderSettings() {
         whisper_model: form.get("whisper_model"),
         caption_model: form.get("caption_model"),
         llm_enabled: form.get("llm_enabled") === "on",
-        llm_api_key: form.get("llm_api_key"),
+        ollama_model: form.get("ollama_model"),
+        ollama_url: form.get("ollama_url").trim(),
       },
     });
     toast("Settings saved");

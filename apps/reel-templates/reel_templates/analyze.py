@@ -323,11 +323,11 @@ def analyze(job_id: str, download_id: str) -> dict:
     }
 
     settings = load_settings()
-    if settings["llm_enabled"] and settings["llm_api_key"]:
-        update_job(job_id, progress=92, message="Labeling shots with AI…")
+    if settings["llm_enabled"]:
+        update_job(job_id, progress=92, message=f"Labeling shots with {settings['ollama_model']}…")
         from .llm import label_template
 
-        label_template(template, settings["llm_api_key"])
+        label_template(template, settings["ollama_url"], settings["ollama_model"])
 
     store.save_template(template)
     store.upsert_download({**record, "template_id": template_id})

@@ -20,9 +20,10 @@ DEFAULT_SETTINGS = {
     "whisper_model": "small",
     # Model for Kutkap editor captions: accuracy matters more than speed here.
     "caption_model": "small",
-    # Optional LLM shot labeling. Off by default; the app works fully without it.
+    # Optional shot labeling with a local Ollama model. Off by default; the app works fully without it.
     "llm_enabled": False,
-    "llm_api_key": "",
+    "ollama_url": "http://localhost:11434",
+    "ollama_model": "qwen3:8b",
 }
 
 _settings_lock = threading.Lock()

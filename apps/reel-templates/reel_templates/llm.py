@@ -1,19 +1,23 @@
-"""Optional AI shot labeling (off by default). The app works fully without it."""
+"""Optional AI shot labeling with a local Ollama model (off by default).
+
+The app works fully without it. Nothing leaves this computer.
+"""
 
 import json
 
-import anthropic
+import requests
 
-MODEL = "claude-opus-5-5"
 ROLES = ["hook", "setup", "demo", "proof", "payoff", "CTA"]
+REQUEST_TIMEOUT_SECONDS = 300
 
 SYSTEM = (
     "You analyze the structure of short-form videos (Reels, TikToks, Shorts) so creators can reuse "
     "the structure with their own footage. Given the shot list, the timed transcript, and any "
     "on-screen text, label each shot's role, name the hook pattern in a few words "
     "(e.g. 'bold claim', 'question', 'before/after', 'POV', 'list teaser'), and write short "
-    "placeholder copy for each text slot that keeps the original's structure but is generic enough "
-    "to reuse. Keep notes brief and practical."
+    "placeholder copy for each shot's on-screen text that keeps the original's structure but is "
+    "generic enough to reuse. Return one entry per shot, using the shot numbers you were given. "
+    "Keep notes brief and practical."
 )
 
 SCHEMA = {
@@ -32,13 +36,26 @@ SCHEMA = {
                     "placeholder_text": {"type": "array", "items": {"type": "string"}},
                 },
                 "required": ["n", "role", "notes", "placeholder_text"],
-                "additionalProperties": False,
             },
         },
     },
     "required": ["hook_type", "reuse_notes", "shots"],
-    "additionalProperties": False,
 }
+
+
+class OllamaUnavailable(Exception):
+    pass
+
+
+def list_models(base_url: str) -> list[str]:
+    try:
+        response = requests.get(f"{base_url}/api/tags", timeout=3)
+        response.raise_for_status()
+    except requests.RequestException as error:
+        raise OllamaUnavailable("Ollama isn't running. Start the Ollama app and try again.") from error
+    names = [model["name"] for model in response.json().get("models", [])]
+    # Embedding models can't chat.
+    return sorted(name for name in names if "embed" not in name)
 
 
 def _describe(template: dict) -> str:
@@ -62,48 +79,48 @@ def _describe(template: dict) -> str:
     )
 
 
-def label_template(template: dict, api_key: str) -> None:
+def label_template(template: dict, base_url: str, model: str) -> None:
     """Fills in roles, hook type, notes and placeholder copy in place. Failures are non-fatal."""
     if not template["shots"]:
         return
-    client = anthropic.Anthropic(api_key=api_key)
     try:
-        response = client.beta.messages.create(
-            model=MODEL,
-            max_tokens=16000,
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",
-            system=SYSTEM,
-            messages=[{"role": "user", "content": _describe(template)}],
-            output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
+        response = requests.post(
+            f"{base_url}/api/chat",
+            json={
+                "model": model,
+                "stream": False,
+                # Reasoning models (qwen3, gpt-oss) are much faster without a thinking pass here.
+                "think": False,
+                "format": SCHEMA,
+                "options": {"temperature": 0.2},
+                "messages": [
+                    {"role": "system", "content": SYSTEM},
+                    {"role": "user", "content": _describe(template)},
+                ],
+            },
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
-    except anthropic.AuthenticationError:
-        template["reuse_notes"] = "AI labeling skipped: the Anthropic API key was rejected."
+        response.raise_for_status()
+        labels = json.loads(response.json()["message"]["content"])
+    except requests.ConnectionError:
+        template["reuse_notes"] = "AI labeling skipped: Ollama isn't running."
         return
-    except anthropic.APIError as error:
+    except (requests.RequestException, KeyError, json.JSONDecodeError) as error:
         print(f"AI labeling failed: {error}")
         return
 
-    if response.stop_reason == "refusal":
-        return
-    text = next((b.text for b in response.content if b.type == "text"), "")
-    try:
-        labels = json.loads(text)
-    except json.JSONDecodeError:
-        return
-
-    template["hook"]["type"] = labels["hook_type"]
-    template["reuse_notes"] = labels["reuse_notes"]
+    template["hook"]["type"] = str(labels.get("hook_type", ""))
+    template["reuse_notes"] = str(labels.get("reuse_notes", ""))
     by_number = {shot["n"]: shot for shot in template["shots"]}
-    for label in labels["shots"]:
-        shot = by_number.get(label["n"])
+    for label in labels.get("shots", []):
+        shot = by_number.get(label.get("n"))
         if not shot:
             continue
-        shot["role"] = label["role"]
-        shot["notes"] = label["notes"]
-        placeholders = label["placeholder_text"]
+        if label.get("role") in ROLES:
+            shot["role"] = label["role"]
+        shot["notes"] = str(label.get("notes", ""))
         # Swap detected text for reusable placeholder copy, keeping the original alongside.
-        for i, copy in enumerate(placeholders):
+        for i, copy in enumerate(label.get("placeholder_text", [])):
             if i < len(shot["on_screen_text"]):
                 shot["on_screen_text"][i]["original"] = shot["on_screen_text"][i]["text"]
-                shot["on_screen_text"][i]["text"] = copy
+                shot["on_screen_text"][i]["text"] = str(copy)
