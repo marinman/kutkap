@@ -28,13 +28,13 @@ export function Onboarding() {
 	const getStepTitle = () => {
 		switch (step) {
 			case 0:
-				return "Welcome to OpenCut Beta! 🎉";
+				return "Welcome to Kutkap! 🎬";
 			case 1:
 				return "⚠️ This is a super early beta!";
 			case 2:
 				return "🦋 Have fun testing!";
 			default:
-				return "OpenCut Onboarding";
+				return "Kutkap Onboarding";
 		}
 	};
 
@@ -44,8 +44,8 @@ export function Onboarding() {
 				return (
 					<div className="space-y-5">
 						<div className="space-y-3">
-							<Title title="Welcome to OpenCut Beta! 🎉" />
-							<Description description="You're among the first to try OpenCut - the fully open source CapCut alternative." />
+							<Title title="Welcome to Kutkap! 🎬" />
+							<Description description="Your local CapCut-style editor, built on the open-source OpenCut project." />
 						</div>
 						<NextButton onClick={handleNext}>Next</NextButton>
 					</div>

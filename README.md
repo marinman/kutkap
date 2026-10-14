@@ -1,44 +1,38 @@
-<table width="100%">
-  <tr>
-    <td align="left" width="120">
-      <img src="https://assets.opencut.app/branding/symbol.svg" alt="OpenCut Logo" width="100" />
-    </td>
-    <td align="right">
-      <h1>OpenCut</h1>
-      <h3 style="margin-top: -10px;">A free and open source video editor for web, desktop, and mobile.</h3>
-    </td>
-  </tr>
-</table>
+# Kutkap
 
-[![Discord](https://img.shields.io/discord/1386309140057690133?label=Discord&logo=discord&logoColor=fff&color=5865F2&style=flat)](https://discord.gg/zmR9N35cjK)
-[![X](https://img.shields.io/badge/follow-%40opencutapp-000?logo=x&logoColor=fff&style=flat)](https://x.com/opencutapp)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat)](LICENSE)
+A local, CapCut-style video editor that runs entirely on your machine: multi-track timeline, automatic captions, caption style templates, and one-click export.
 
-## Status
+Kutkap is built on [OpenCut](https://github.com/OpenCut-app/OpenCut) (MIT), starting from its `pre-rewrite` snapshot, the last version with the full web editor.
 
-**OpenCut is being rewritten from the ground up.** What's coming:
+## Features
 
-- An Editor API
-- First-class third party plugins (made possible by a plugin-first architecture)
-- Desktop, mobile, and browser from one codebase (Rust core)
-- MCP server (for AI agents)
-- Headless mode (automation, batch rendering)
-- A scripting tab directly in the editor
+- **Timeline editor**: multi-track video, audio, text, stickers, effects and transitions
+- **Auto captions**: Whisper speech-to-text running locally in the browser; nothing is uploaded
+- **Caption styles**: Classic, Bold Pop, Boxed, Highlight and Minimal, with 1 to 8 words per caption (1 = word by word)
+- **Subtitle import**: `.srt` and `.ass`
+- **Export**: MP4 at the project's canvas size (9:16, 16:9, 1:1 and more)
+- **Mac app**: a launcher with its own icon that opens Kutkap in a standalone window
 
-You can still find the previous version at [opencut-app/opencut-classic](https://github.com/opencut-app/opencut-classic), which is the one to reach for today. [opencut.app](https://opencut.app) still runs the classic version; the rewrite will live at [new.opencut.app](https://new.opencut.app) until it's ready to take over.
+## Run it
 
-## Sponsors
+Requires [Bun](https://bun.sh).
 
-OpenCut is supported by companies that believe in open source creator tools.
+```sh
+bun install
+cp apps/web/.env.example apps/web/.env.local   # placeholder values are fine for local use
+cd apps/web && bun run dev                      # http://localhost:3000
+```
 
-- [**fal.ai**](https://fal.ai?utm_source=github-opencut&utm_campaign=oss): Generative image, video, and audio models all in one place.
+### Install the Mac app
 
-Want your logo here? Reach out at [sponsor@opencut.app](mailto:sponsor@opencut.app).
+```sh
+scripts/mac/install-app.sh
+```
 
-## Contributing
+This creates `~/Applications/Kutkap.app` and a Kutkap shortcut on your Desktop. On first launch it builds the app (about a minute), then starts the local server on port 3517 and opens the editor in a Chrome app window. Server logs go to `~/Library/Logs/Kutkap.log`.
 
-We're not set up to take outside contributions yet while the architecture is being designed. If you want to follow along, ask questions, or just hang out, [join the Discord](https://discord.gg/zmR9N35cjK) or [open an issue](https://github.com/opencut-app/opencut/issues).
+Projects are stored in your browser's IndexedDB for `localhost:3517`.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). Original work © the OpenCut contributors.
