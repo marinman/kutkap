@@ -8,6 +8,22 @@ APP="$HOME/Applications/Kutkap.app"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# Python service for Reel Templates and word-timed captions. It is copied out of the
+# repo because macOS blocks apps launched from Finder from reading ~/Downloads,
+# ~/Desktop and ~/Documents, where the repo may live.
+REELS_DIR="$HOME/Library/Application Support/Kutkap/reel-templates"
+mkdir -p "$REELS_DIR"
+rsync -a --delete --exclude .venv --exclude __pycache__ "$REPO_DIR/apps/reel-templates/" "$REELS_DIR/app/"
+for tool in python3.12 ffmpeg tesseract; do
+	command -v "$tool" >/dev/null || { echo "Missing $tool. Install it with: brew install ${tool/python3.12/python@3.12}"; exit 1; }
+done
+if [ ! -x "$REELS_DIR/.venv/bin/uvicorn" ]; then
+	echo "Setting up the Reel Templates service (one time)…"
+	python3.12 -m venv "$REELS_DIR/.venv"
+fi
+"$REELS_DIR/.venv/bin/pip" install -q --upgrade pip
+"$REELS_DIR/.venv/bin/pip" install -q -r "$REELS_DIR/app/requirements.txt"
+
 mkdir -p "$HOME/.kutkap"
 echo "$REPO_DIR" >"$HOME/.kutkap/repo-path"
 
@@ -44,5 +60,9 @@ cat >"$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 touch "$APP"
-ln -sfn "$APP" "$HOME/Desktop/Kutkap"
+# A Finder alias (unlike a symlink) shows the app icon on the Desktop.
+rm -f "$HOME/Desktop/Kutkap"
+osascript \
+	-e "tell application \"Finder\" to make alias file to (POSIX file \"$APP\" as alias) at (path to desktop folder)" \
+	-e 'tell application "Finder" to set name of result to "Kutkap"' >/dev/null
 echo "Installed $APP (Desktop shortcut: ~/Desktop/Kutkap)"

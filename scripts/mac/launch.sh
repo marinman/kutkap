@@ -6,6 +6,8 @@ PORT="${KUTKAP_PORT:-3517}"
 URL="http://localhost:${PORT}/projects"
 REPO_DIR="$(cat "$HOME/.kutkap/repo-path" 2>/dev/null)"
 WEB_DIR="${REPO_DIR}/apps/web"
+REELS_DIR="$HOME/Library/Application Support/Kutkap/reel-templates"
+REELS_PORT=3518
 LOG="$HOME/Library/Logs/Kutkap.log"
 
 # Apps launched from Finder get a minimal PATH.
@@ -22,6 +24,15 @@ is_up() {
 if [ ! -d "$WEB_DIR" ]; then
 	osascript -e 'display alert "Kutkap" message "Could not find the Kutkap folder. Re-run scripts/mac/install-app.sh."' >/dev/null
 	exit 1
+fi
+
+# Reel Templates + word-timed captions service (Python).
+if ! curl -s -o /dev/null --max-time 1 "http://localhost:${REELS_PORT}/api/health"; then
+	if [ -x "$REELS_DIR/.venv/bin/uvicorn" ]; then
+		(cd "$REELS_DIR/app" && nohup ../.venv/bin/uvicorn reel_templates.main:app --port "$REELS_PORT" >>"$LOG" 2>&1 &)
+	else
+		notify "Reel Templates isn't set up yet. Run scripts/mac/install-app.sh."
+	fi
 fi
 
 if ! is_up; then
