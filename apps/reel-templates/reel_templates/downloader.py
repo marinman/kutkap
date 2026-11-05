@@ -9,12 +9,14 @@ from urllib.parse import urlparse
 import yt_dlp
 
 from . import store
-from .config import DOWNLOADS_DIR, load_settings, relative_to_data
+from .config import CAPTURES_DIR, DOWNLOADS_DIR, load_settings, relative_to_data
 from .jobs import UserFacingError, update_job
 
 SUPPORTED_HOSTS = ("instagram.com", "tiktok.com", "youtube.com", "youtu.be")
 
+# Prefer H.264 (avc1): AV1/VP9 MP4s don't play in QuickTime and many other apps.
 VIDEO_FORMAT = (
+    "bv*[height<=1080][vcodec^=avc1]+ba[ext=m4a]/"
     "bv*[height<=1080][ext=mp4]+ba[ext=m4a]/"
     "b[height<=1080][ext=mp4]/"
     "bv*[height<=1080]+ba/b[height<=1080]/b"
@@ -132,6 +134,51 @@ def download(job_id: str, url: str, media_format: str) -> dict:
     }
     store.upsert_download(record)
     return {"download_id": record["id"]}
+
+
+def validate_capture_url(url: str) -> str:
+    """Media capture accepts any web link yt-dlp can read, not just reel sites."""
+    parsed = urlparse(url.strip())
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise UserFacingError("That doesn't look like a link. Paste a full URL starting with https://")
+    return url.strip()
+
+
+def capture(job_id: str, url: str, media_format: str) -> dict:
+    """Downloads a link as .mp4 video or .mp3 audio for the editor's Media panel."""
+    options = _base_options(job_id)
+    options["paths"] = {"home": str(CAPTURES_DIR)}
+    if media_format == "mp3":
+        options["format"] = AUDIO_FORMAT
+        options["postprocessors"] = [
+            {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}
+        ]
+    else:
+        options["format"] = VIDEO_FORMAT
+        options["merge_output_format"] = "mp4"
+        # Single-file sources (e.g. a .webm or .mov link) are rewrapped as .mp4 too.
+        options["postprocessors"] = [{"key": "FFmpegVideoRemuxer", "preferedformat": "mp4"}]
+
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info.get("_type") == "playlist":
+                raise UserFacingError("That link is a playlist or profile. Paste a link to a single video.")
+            if media_format == "mp4" and not _has_video(info):
+                raise UserFacingError("That link doesn't contain a video. Try MP3 instead.")
+            update_job(job_id, message=f"Downloading “{info.get('title') or 'media'}”…")
+            info = ydl.process_ie_result(info, download=True)
+    except UserFacingError:
+        raise
+    except yt_dlp.utils.DownloadError as error:
+        raise UserFacingError(_friendly_error(error)) from error
+
+    requested = info.get("requested_downloads") or []
+    path = Path(requested[-1]["filepath"]) if requested else Path(info["_filename"])
+    path = path.with_suffix(f".{media_format}")
+    if not path.exists():
+        raise UserFacingError("The download finished but the file is missing. Try again.")
+    return {"file": relative_to_data(path), "filename": path.name, "title": info.get("title") or path.stem}
 
 
 def _has_video(info: dict) -> bool:

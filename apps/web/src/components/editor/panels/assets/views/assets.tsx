@@ -32,6 +32,7 @@ import { useFileUpload } from "@/media/use-file-upload";
 import { invokeAction } from "@/actions";
 import { processMediaAssets } from "@/media/processing";
 import { extractAudioFromVideoFile } from "@/media/extract-audio";
+import { UrlCapture } from "@/media/components/url-capture";
 import { showMediaUploadToast } from "@/media/upload-toast";
 import {
 	SelectableItem,
@@ -220,29 +221,34 @@ export function MediaView() {
 				contentClassName="h-full"
 				{...dragProps}
 			>
-				{isDragOver || filteredMediaItems.length === 0 ? (
-					<MediaDragOverlay
-						isVisible={true}
-						isProcessing={isProcessing}
-						progress={progress}
-						onClick={openFilePicker}
-					/>
-				) : (
-					<SelectableSurface
-						ariaLabel="Assets"
-						orderedIds={orderedMediaIds}
-						revealId={highlightMediaId}
-						onRevealComplete={clearHighlight}
-					>
-						<MediaScopeRegistrar />
-						<MediaItemList
-							items={filteredMediaItems}
-							mode={mediaViewMode}
-							onRemove={handleRemove}
-							onExtractAudio={handleExtractAudio}
-						/>
-					</SelectableSurface>
-				)}
+				<div className="flex h-full flex-col">
+					<UrlCapture onFile={(file) => processFiles({ files: [file] })} />
+					<div className="min-h-0 flex-1">
+						{isDragOver || filteredMediaItems.length === 0 ? (
+							<MediaDragOverlay
+								isVisible={true}
+								isProcessing={isProcessing}
+								progress={progress}
+								onClick={openFilePicker}
+							/>
+						) : (
+							<SelectableSurface
+								ariaLabel="Assets"
+								orderedIds={orderedMediaIds}
+								revealId={highlightMediaId}
+								onRevealComplete={clearHighlight}
+							>
+								<MediaScopeRegistrar />
+								<MediaItemList
+									items={filteredMediaItems}
+									mode={mediaViewMode}
+									onRemove={handleRemove}
+									onExtractAudio={handleExtractAudio}
+								/>
+							</SelectableSurface>
+						)}
+					</div>
+				</div>
 			</PanelView>
 		</>
 	);

@@ -7,6 +7,8 @@ from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("KUTKAP_DATA", Path.home() / "Kutkap")).expanduser()
 DOWNLOADS_DIR = DATA_DIR / "downloads"
+# Media captured from links in the Kutkap editor's Media panel.
+CAPTURES_DIR = DATA_DIR / "captures"
 FRAMES_DIR = DATA_DIR / "frames"
 TEMPLATES_DIR = DATA_DIR / "templates"
 SETTINGS_FILE = DATA_DIR / "settings.json"
@@ -30,7 +32,7 @@ _settings_lock = threading.Lock()
 
 
 def ensure_dirs() -> None:
-    for directory in (DOWNLOADS_DIR, FRAMES_DIR, TEMPLATES_DIR):
+    for directory in (DOWNLOADS_DIR, CAPTURES_DIR, FRAMES_DIR, TEMPLATES_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 
 

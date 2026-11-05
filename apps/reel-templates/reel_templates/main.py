@@ -59,6 +59,24 @@ def create_download(body: DownloadRequest):
     return {"job_id": job_id}
 
 
+class CaptureRequest(BaseModel):
+    url: str
+    format: str = "mp4"
+
+
+@app.post("/api/capture")
+def capture_media(body: CaptureRequest):
+    """Used by the editor's Media panel: download any link as MP4 or MP3."""
+    if body.format not in ("mp4", "mp3"):
+        raise _error(400, "Format must be MP4 or MP3.")
+    try:
+        url = downloader.validate_capture_url(body.url)
+    except UserFacingError as error:
+        raise _error(400, str(error)) from error
+    job_id = start_job("capture", lambda jid: downloader.capture(jid, url, body.format))
+    return {"job_id": job_id}
+
+
 @app.get("/api/downloads")
 def list_downloads():
     return store.list_downloads()
@@ -239,7 +257,7 @@ def ollama_models():
 # Files + UI --------------------------------------------------------------------
 
 # Only media folders are served, never settings.json or the downloads index.
-for _folder in ("downloads", "frames", "templates/audio"):
+for _folder in ("downloads", "captures", "frames", "templates/audio"):
     (DATA_DIR / _folder).mkdir(parents=True, exist_ok=True)
     app.mount(f"/files/{_folder}", StaticFiles(directory=DATA_DIR / _folder), name=f"files-{_folder}")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
