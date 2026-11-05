@@ -34,9 +34,26 @@ import {
 } from "@/components/section";
 import { useEditor } from "@/editor/use-editor";
 import { DEFAULT_EXPORT_OPTIONS } from "@/export/defaults";
+import {
+	AUDIO_EXPORT_MIME_TYPES,
+	encodeAudioBuffer,
+	renderTimelineAudio,
+	type AudioExportFormat,
+} from "@/media/extract-audio";
 
-function isExportFormat(value: string): value is ExportFormat {
-	return EXPORT_FORMAT_VALUES.some((formatValue) => formatValue === value);
+/** Video formats go through the renderer; audio-only formats skip it. */
+type ExportChoice = ExportFormat | AudioExportFormat;
+
+function isExportChoice(value: string): value is ExportChoice {
+	return (
+		EXPORT_FORMAT_VALUES.some((formatValue) => formatValue === value) ||
+		value === "m4a" ||
+		value === "wav"
+	);
+}
+
+function isAudioOnly(choice: ExportChoice): choice is AudioExportFormat {
+	return choice === "m4a" || choice === "wav";
 }
 
 function isExportQuality(value: string): value is ExportQuality {
@@ -101,9 +118,13 @@ function ExportPopover({
 	const activeProject = useEditor((e) => e.project.getActive());
 	const exportState = useEditor((e) => e.project.getExportState());
 	const { isExporting, progress, result: exportResult } = exportState;
-	const [format, setFormat] = useState<ExportFormat>(
+	const [format, setFormat] = useState<ExportChoice>(
 		DEFAULT_EXPORT_OPTIONS.format,
 	);
+	const [audioExport, setAudioExport] = useState<{
+		isExporting: boolean;
+		error: string | null;
+	}>({ isExporting: false, error: null });
 	const [quality, setQuality] = useState<ExportQuality>(
 		DEFAULT_EXPORT_OPTIONS.quality,
 	);
@@ -111,8 +132,44 @@ function ExportPopover({
 		DEFAULT_EXPORT_OPTIONS.includeAudio ?? true,
 	);
 
+	const handleAudioExport = async ({
+		audioFormat,
+	}: {
+		audioFormat: AudioExportFormat;
+	}) => {
+		if (!activeProject) return;
+		setAudioExport({ isExporting: true, error: null });
+		try {
+			const audioBuffer = await renderTimelineAudio({
+				tracks: editor.scenes.getActiveScene().tracks,
+				mediaAssets: editor.media.getAssets(),
+				duration: editor.timeline.getTotalDuration(),
+			});
+			const { blob, format: finalFormat } = await encodeAudioBuffer({
+				audioBuffer,
+				format: audioFormat,
+			});
+			downloadBuffer({
+				buffer: await blob.arrayBuffer(),
+				filename: `${activeProject.metadata.name}.${finalFormat}`,
+				mimeType: AUDIO_EXPORT_MIME_TYPES[finalFormat],
+			});
+			setAudioExport({ isExporting: false, error: null });
+			onOpenChange(false);
+		} catch (error) {
+			setAudioExport({
+				isExporting: false,
+				error: error instanceof Error ? error.message : "Audio export failed",
+			});
+		}
+	};
+
 	const handleExport = async () => {
 		if (!activeProject) return;
+		if (isAudioOnly(format)) {
+			await handleAudioExport({ audioFormat: format });
+			return;
+		}
 
 		const result = await editor.project.export({
 			options: {
@@ -146,7 +203,9 @@ function ExportPopover({
 
 	return (
 		<PopoverContent className="bg-background mr-4 flex w-80 flex-col p-0">
-			{exportResult && !exportResult.success ? (
+			{audioExport.error ? (
+				<ExportError error={audioExport.error} onRetry={handleExport} />
+			) : exportResult && !exportResult.success ? (
 				<ExportError
 					error={exportResult.error || "Unknown error occurred"}
 					onRetry={handleExport}
@@ -175,7 +234,7 @@ function ExportPopover({
 											<RadioGroup
 												value={format}
 												onValueChange={(value) => {
-													if (isExportFormat(value)) {
+													if (isExportChoice(value)) {
 														setFormat(value);
 													}
 												}}
@@ -192,70 +251,90 @@ function ExportPopover({
 														WebM (VP9) - Smaller file size
 													</Label>
 												</div>
-											</RadioGroup>
-										</SectionContent>
-									</Section>
-
-									<Section collapsible defaultOpen={false}>
-										<SectionHeader>
-											<SectionTitle>Quality</SectionTitle>
-										</SectionHeader>
-										<SectionContent>
-											<RadioGroup
-												value={quality}
-												onValueChange={(value) => {
-													if (isExportQuality(value)) {
-														setQuality(value);
-													}
-												}}
-											>
 												<div className="flex items-center space-x-2">
-													<RadioGroupItem value="low" id="low" />
-													<Label htmlFor="low">Low - Smallest file size</Label>
+													<RadioGroupItem value="m4a" id="m4a" />
+													<Label htmlFor="m4a">Audio only - M4A (AAC)</Label>
 												</div>
 												<div className="flex items-center space-x-2">
-													<RadioGroupItem value="medium" id="medium" />
-													<Label htmlFor="medium">Medium - Balanced</Label>
-												</div>
-												<div className="flex items-center space-x-2">
-													<RadioGroupItem value="high" id="high" />
-													<Label htmlFor="high">High - Recommended</Label>
-												</div>
-												<div className="flex items-center space-x-2">
-													<RadioGroupItem value="very_high" id="very_high" />
-													<Label htmlFor="very_high">
-														Very high - Largest file size
-													</Label>
+													<RadioGroupItem value="wav" id="wav" />
+													<Label htmlFor="wav">Audio only - WAV (lossless)</Label>
 												</div>
 											</RadioGroup>
 										</SectionContent>
 									</Section>
 
-									<Section collapsible defaultOpen={false}>
-										<SectionHeader>
-											<SectionTitle>Audio</SectionTitle>
-										</SectionHeader>
-										<SectionContent>
-											<div className="flex items-center space-x-2">
-												<Checkbox
-													id="include-audio"
-													checked={shouldIncludeAudio}
-													onCheckedChange={(checked) =>
-														setShouldIncludeAudio(!!checked)
-													}
-												/>
-												<Label htmlFor="include-audio">
-													Include audio in export
-												</Label>
-											</div>
-										</SectionContent>
-									</Section>
+									{!isAudioOnly(format) && (
+										<>
+											<Section collapsible defaultOpen={false}>
+												<SectionHeader>
+													<SectionTitle>Quality</SectionTitle>
+												</SectionHeader>
+												<SectionContent>
+													<RadioGroup
+														value={quality}
+														onValueChange={(value) => {
+															if (isExportQuality(value)) {
+																setQuality(value);
+															}
+														}}
+													>
+														<div className="flex items-center space-x-2">
+															<RadioGroupItem value="low" id="low" />
+															<Label htmlFor="low">Low - Smallest file size</Label>
+														</div>
+														<div className="flex items-center space-x-2">
+															<RadioGroupItem value="medium" id="medium" />
+															<Label htmlFor="medium">Medium - Balanced</Label>
+														</div>
+														<div className="flex items-center space-x-2">
+															<RadioGroupItem value="high" id="high" />
+															<Label htmlFor="high">High - Recommended</Label>
+														</div>
+														<div className="flex items-center space-x-2">
+															<RadioGroupItem value="very_high" id="very_high" />
+															<Label htmlFor="very_high">
+																Very high - Largest file size
+															</Label>
+														</div>
+													</RadioGroup>
+												</SectionContent>
+											</Section>
+
+											<Section collapsible defaultOpen={false}>
+												<SectionHeader>
+													<SectionTitle>Audio</SectionTitle>
+												</SectionHeader>
+												<SectionContent>
+													<div className="flex items-center space-x-2">
+														<Checkbox
+															id="include-audio"
+															checked={shouldIncludeAudio}
+															onCheckedChange={(checked) =>
+																setShouldIncludeAudio(!!checked)
+															}
+														/>
+														<Label htmlFor="include-audio">
+															Include audio in export
+														</Label>
+													</div>
+												</SectionContent>
+											</Section>
+										</>
+									)}
 								</div>
 
 								<div className="p-3 pt-0">
-									<Button onClick={handleExport} className="w-full gap-2">
+									<Button
+										onClick={handleExport}
+										className="w-full gap-2"
+										disabled={audioExport.isExporting}
+									>
 										<Download className="size-4" />
-										Export
+										{audioExport.isExporting
+											? "Exporting audio…"
+											: isAudioOnly(format)
+												? "Export audio"
+												: "Export"}
 									</Button>
 								</div>
 							</>

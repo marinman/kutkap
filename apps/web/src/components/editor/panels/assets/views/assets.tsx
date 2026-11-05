@@ -31,6 +31,7 @@ import { useEditor } from "@/editor/use-editor";
 import { useFileUpload } from "@/media/use-file-upload";
 import { invokeAction } from "@/actions";
 import { processMediaAssets } from "@/media/processing";
+import { extractAudioFromVideoFile } from "@/media/extract-audio";
 import { showMediaUploadToast } from "@/media/upload-toast";
 import {
 	SelectableItem,
@@ -112,6 +113,17 @@ export function MediaView() {
 		} finally {
 			setIsProcessing(false);
 			setProgress(0);
+		}
+	};
+
+	const handleExtractAudio = async ({ item }: { item: MediaAsset }) => {
+		try {
+			const audioFile = await extractAudioFromVideoFile({ file: item.file });
+			await processFiles({ files: [audioFile] });
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Couldn't extract audio",
+			);
 		}
 	};
 
@@ -227,6 +239,7 @@ export function MediaView() {
 							items={filteredMediaItems}
 							mode={mediaViewMode}
 							onRemove={handleRemove}
+							onExtractAudio={handleExtractAudio}
 						/>
 					</SelectableSurface>
 				)}
@@ -304,9 +317,11 @@ function MediaItemWithContextMenu({
 	item,
 	children,
 	onRemove,
+	onExtractAudio,
 }: {
 	item: MediaAsset;
 	children: React.ReactNode;
+	onExtractAudio: ({ item }: { item: MediaAsset }) => void;
 	onRemove: ({
 		event,
 		ids,
@@ -325,6 +340,11 @@ function MediaItemWithContextMenu({
 			<ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
 			<ContextMenuContent>
 				<ContextMenuItem>Export clips</ContextMenuItem>
+				{item.type === "video" && item.hasAudio !== false && (
+					<ContextMenuItem onClick={() => onExtractAudio({ item })}>
+						Extract audio
+					</ContextMenuItem>
+				)}
 				<ContextMenuItem
 					variant="destructive"
 					onClick={(event: React.MouseEvent<HTMLDivElement>) =>
@@ -342,9 +362,11 @@ function MediaItemList({
 	items,
 	mode,
 	onRemove,
+	onExtractAudio,
 }: {
 	items: MediaAsset[];
 	mode: MediaViewMode;
+	onExtractAudio: ({ item }: { item: MediaAsset }) => void;
 	onRemove: ({
 		event,
 		ids,
@@ -363,7 +385,12 @@ function MediaItemList({
 			}
 		>
 			{items.map((item) => (
-				<MediaItemWithContextMenu item={item} onRemove={onRemove} key={item.id}>
+				<MediaItemWithContextMenu
+					item={item}
+					onRemove={onRemove}
+					onExtractAudio={onExtractAudio}
+					key={item.id}
+				>
 					<SelectableItem className={cn(!isGrid && "w-full")} id={item.id}>
 						<MediaAssetDraggable
 							item={item}
