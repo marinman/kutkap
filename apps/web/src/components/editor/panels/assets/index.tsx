@@ -11,6 +11,7 @@ import { StickersView } from "@/stickers/components/assets-view";
 import { TextView } from "@/text/components/assets-view";
 import { EffectsView } from "@/effects/components/assets-view";
 import { TemplatesView } from "@/templates/components/assets-view";
+import { FaceSwapView } from "@/faceswap/components/assets-view";
 
 export function AssetsPanel() {
 	const { activeTab } = useAssetsPanelStore();
@@ -28,6 +29,7 @@ export function AssetsPanel() {
 			</div>
 		),
 		captions: <Captions />,
+		faceswap: <FaceSwapView />,
 		adjustment: (
 			<div className="text-muted-foreground p-4">
 				Adjustment view coming soon...

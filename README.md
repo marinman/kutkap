@@ -13,6 +13,7 @@ Kutkap is built on [OpenCut](https://github.com/OpenCut-app/OpenCut) (MIT), star
 - **Get media from a link**: paste a YouTube, Instagram, TikTok (or most other) link at the top of the Media panel and download it straight into the project as MP4 or MP3
 - **Canvas ratio switcher**: Original, Custom, 16:9, 4:3, 2.35:1, 2:1, 1.85:1, 9:16, 3:4, 5.8-inch and 1:1 under the preview
 - **Audio extraction**: split a clip's audio onto its own track, save a video's sound as an audio asset, or export audio only (M4A or WAV)
+- **Face swap**: the Face swap tab runs your local [FaceFusion](https://github.com/facefusion/facefusion) install (expected at `~/facefusion`, override with `FACEFUSION_DIR`) on a video or image from Media and adds the result back to Media. Choose the main face or everyone; "Open FaceFusion" opens the full app for picking one person in a group. Only use faces of people who've agreed to it
 - **Subtitle import**: `.srt` and `.ass`
 - **Export**: MP4 at the project's canvas size (9:16, 16:9, 1:1 and more)
 - **Mac app**: a launcher with its own icon that opens Kutkap in a standalone window

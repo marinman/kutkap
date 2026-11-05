@@ -1,17 +1,19 @@
 """Reel Template Maker API + static UI. Run: uvicorn reel_templates.main:app --port 3518"""
 
 import re
+import shutil
 import tempfile
+import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analyze, downloader, export, llm, store
+from . import analyze, downloader, export, faceswap, llm, store
 from .config import DATA_DIR, LONG_VIDEO_SECONDS, ensure_dirs, load_settings, save_settings
 from .jobs import UserFacingError, get_job, start_job
 
@@ -210,6 +212,62 @@ def _load(template_id: str) -> dict:
     return template
 
 
+# Face swap (used by the Kutkap editor, runs the local FaceFusion) -----------
+
+FACESWAP_IMAGE_TYPES = {".jpg", ".jpeg", ".png", ".webp"}
+FACESWAP_TARGET_TYPES = FACESWAP_IMAGE_TYPES | {".mp4", ".mov", ".m4v", ".webm"}
+
+
+def _save_upload(upload: UploadFile, folder: Path, stem: str, allowed: set[str]) -> Path:
+    suffix = Path(upload.filename or "").suffix.lower()
+    if suffix not in allowed:
+        raise _error(400, f"Unsupported file type: {suffix or 'unknown'}")
+    path = folder / f"{stem}{suffix}"
+    with path.open("wb") as handle:
+        shutil.copyfileobj(upload.file, handle)
+    return path
+
+
+@app.get("/api/faceswap/status")
+def faceswap_status():
+    return faceswap.status()
+
+
+@app.post("/api/faceswap")
+def start_faceswap(
+    source: UploadFile = File(...),
+    target: UploadFile = File(...),
+    mode: str = Form("main"),
+    enhance: bool = Form(True),
+):
+    if mode not in ("main", "everyone"):
+        raise _error(400, "Choose who to replace: the main face or everyone.")
+    if faceswap.status()["busy"]:
+        raise _error(409, "Another face swap is still running. Wait for it to finish.")
+    folder = faceswap.FACESWAP_DIR / uuid.uuid4().hex
+    folder.mkdir(parents=True)
+    source_path = _save_upload(source, folder, "face", FACESWAP_IMAGE_TYPES)
+    target_stem = re.sub(r"[^\w .-]+", "", Path(target.filename or "target").stem)[:60] or "target"
+    target_path = _save_upload(target, folder, target_stem, FACESWAP_TARGET_TYPES)
+    job_id = start_job(
+        "faceswap",
+        lambda jid: faceswap.run(jid, source_path, target_path, mode=mode, enhance=enhance),
+    )
+    return {"job_id": job_id}
+
+
+@app.post("/api/faceswap/open")
+def open_facefusion():
+    if not faceswap.open_ui():
+        raise _error(404, "FaceFusion.app wasn't found in ~/Applications.")
+    return {"url": faceswap.FACEFUSION_UI_URL}
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job(job_id: str):
+    return {"cancelled": faceswap.cancel(job_id)}
+
+
 # Captions (used by the Kutkap editor) -------------------------------------------
 
 @app.get("/api/health")
@@ -257,7 +315,7 @@ def ollama_models():
 # Files + UI --------------------------------------------------------------------
 
 # Only media folders are served, never settings.json or the downloads index.
-for _folder in ("downloads", "captures", "frames", "templates/audio"):
+for _folder in ("downloads", "captures", "faceswap", "frames", "templates/audio"):
     (DATA_DIR / _folder).mkdir(parents=True, exist_ok=True)
     app.mount(f"/files/{_folder}", StaticFiles(directory=DATA_DIR / _folder), name=f"files-{_folder}")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

@@ -13,6 +13,7 @@ import {
 	SlidersHorizontalIcon,
 	ColorsIcon,
 	DashboardSquare02Icon,
+	UserSwitchIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon, type IconSvgElement } from "@hugeicons/react";
 
@@ -25,6 +26,7 @@ export const TAB_KEYS = [
 	"effects",
 	"transitions",
 	"captions",
+	"faceswap",
 	"adjustment",
 	"settings",
 ] as const;
@@ -69,6 +71,10 @@ export const tabs = {
 	captions: {
 		icon: createHugeiconsIcon({ icon: ClosedCaptionIcon }),
 		label: "Captions",
+	},
+	faceswap: {
+		icon: createHugeiconsIcon({ icon: UserSwitchIcon }),
+		label: "Face swap",
 	},
 	adjustment: {
 		icon: createHugeiconsIcon({ icon: SlidersHorizontalIcon }),
