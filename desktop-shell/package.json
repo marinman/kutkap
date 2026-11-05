@@ -1,0 +1,19 @@
+{
+	"name": "kutkap-desktop",
+	"productName": "Kutkap",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Kutkap macOS app: a native window around the local editor",
+	"main": "main.js",
+	"scripts": {
+		"start": "electron .",
+		"package": "electron-packager . Kutkap --platform=darwin --overwrite --out=dist --icon=build/Kutkap.icns --app-bundle-id=com.marinman.kutkap --ignore='^/dist' --ignore='^/build'"
+	},
+	"trustedDependencies": [
+		"electron"
+	],
+	"devDependencies": {
+		"@electron/packager": "18.4.4",
+		"electron": "37.10.3"
+	}
+}

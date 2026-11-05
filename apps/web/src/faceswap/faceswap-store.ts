@@ -16,6 +16,9 @@ type FaceSwapRun =
 
 interface FaceSwapStore {
 	run: FaceSwapRun;
+	/** Media asset the panel should preselect as the target (set by the header button). */
+	preferredTargetId: string | null;
+	setPreferredTargetId: (id: string | null) => void;
 	start: (params: {
 		editor: EditorCore;
 		source: File;
@@ -32,6 +35,8 @@ interface FaceSwapStore {
  */
 export const useFaceSwapStore = create<FaceSwapStore>()((set, get) => ({
 	run: { status: "idle", error: null },
+	preferredTargetId: null,
+	setPreferredTargetId: (id) => set({ preferredTargetId: id }),
 
 	start: async ({ editor, source, target, mode, enhance }) => {
 		const projectId = editor.project.getActive().metadata.id;

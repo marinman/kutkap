@@ -25,7 +25,8 @@ const MODES: { value: FaceSwapMode; label: string }[] = [
 export function FaceSwapView() {
 	const editor = useEditor();
 	const assets = useEditor((e) => e.media.getAssets());
-	const { run, start, cancel } = useFaceSwapStore();
+	const { run, start, cancel, preferredTargetId, setPreferredTargetId } =
+		useFaceSwapStore();
 	const [status, setStatus] = useState<FaceSwapStatus | null | "loading">(
 		"loading",
 	);
@@ -41,6 +42,12 @@ export function FaceSwapView() {
 	useEffect(() => {
 		void fetchFaceSwapStatus().then(setStatus);
 	}, []);
+
+	useEffect(() => {
+		if (!preferredTargetId) return;
+		setTargetId(preferredTargetId);
+		setPreferredTargetId(null);
+	}, [preferredTargetId, setPreferredTargetId]);
 
 	useEffect(() => {
 		if (!uploadedFace) {

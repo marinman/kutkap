@@ -47,9 +47,9 @@ Downloads, captured media, keyframes and templates are stored in `~/Kutkap` (`do
 scripts/mac/install-app.sh
 ```
 
-This creates `~/Applications/Kutkap.app` and a Kutkap shortcut on your Desktop, and installs the Reel Templates service into `~/Library/Application Support/Kutkap` (outside `~/Downloads`, which macOS blocks Finder-launched apps from reading). Re-run it after pulling changes. On first launch the app builds the editor (about a minute), then starts both servers (editor on 3517, Reel Templates on 3518) and opens the editor in a Chrome app window. Server logs go to `~/Library/Logs/Kutkap.log`.
+This builds `~/Applications/Kutkap.app`, a standalone macOS app (Electron, in `desktop-shell/`) with its own window, Dock icon and menu bar, adds it to your Dock and puts a shortcut on your Desktop. Re-run it after pulling changes.
 
-Projects are stored in your browser's IndexedDB for `localhost:3517`.
+The app runs its own copy of the editor and media service from `~/Library/Application Support/Kutkap` (`web/`, `reel-templates/`), starts them when it opens and stops them when it quits. Projects and their media are stored in `~/Library/Application Support/Kutkap/App Data`. Logs go to `~/Library/Logs/Kutkap.log`.
 
 ## License
 

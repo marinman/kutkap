@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { NextConfig } from "next";
 import { withBotId } from "botid/next/config";
 import { withContentCollections } from "@content-collections/next";
@@ -9,6 +10,8 @@ const nextConfig: NextConfig = {
 	reactStrictMode: true,
 	productionBrowserSourceMaps: true,
 	output: "standalone",
+	// Monorepo root; keeps the standalone build at .next/standalone/apps/web (used by the Kutkap desktop app).
+	outputFileTracingRoot: path.join(__dirname, "../.."),
 	images: {
 		remotePatterns: [
 			{

@@ -289,3 +289,13 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Kutkap desktop app: page headers double as the macOS title bar.
+   The desktop shell sets data-shell="desktop" on <html>. */
+[data-shell="desktop"] .kutkap-titlebar {
+	-webkit-app-region: drag;
+	padding-left: 84px;
+}
+[data-shell="desktop"] .kutkap-titlebar :is(button, a, input, select, textarea, [role="button"], [role="combobox"]) {
+	-webkit-app-region: no-drag;
+}
