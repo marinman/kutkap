@@ -558,6 +558,90 @@ class StorageService {
 		}
 	}
 
+	// Raw access used by the project bundle export/import (see project-bundle.ts).
+	// Records are passed through untouched so IDs and every stored field round-trip.
+
+	async listRawProjects(): Promise<SerializedProject[]> {
+		await this.ensureMigrations();
+		return this.projectsAdapter.getAll();
+	}
+
+	async hasProject({ id }: { id: string }): Promise<boolean> {
+		return (await this.projectsAdapter.get(id)) !== null;
+	}
+
+	async putRawProject({
+		id,
+		record,
+	}: {
+		id: string;
+		record: SerializedProject;
+	}): Promise<void> {
+		await this.projectsAdapter.set({ key: id, value: record });
+	}
+
+	async listRawProjectMedia({
+		projectId,
+	}: {
+		projectId: string;
+	}): Promise<Array<{ metadata: MediaAssetData; file: File }>> {
+		const { mediaMetadataAdapter, mediaAssetsAdapter } =
+			this.getProjectMediaAdapters({ projectId });
+
+		const items: Array<{ metadata: MediaAssetData; file: File }> = [];
+		for (const id of await mediaMetadataAdapter.list()) {
+			const [metadata, file] = await Promise.all([
+				mediaMetadataAdapter.get(id),
+				mediaAssetsAdapter.get(id),
+			]);
+			if (metadata && file) {
+				items.push({ metadata, file });
+			}
+		}
+		return items;
+	}
+
+	async putRawProjectMedia({
+		projectId,
+		metadata,
+		file,
+	}: {
+		projectId: string;
+		metadata: MediaAssetData;
+		file: Blob;
+	}): Promise<void> {
+		const { mediaMetadataAdapter, mediaAssetsAdapter } =
+			this.getProjectMediaAdapters({ projectId });
+
+		try {
+			await mediaAssetsAdapter.set({
+				key: metadata.id,
+				value: file as File,
+			});
+		} catch (error) {
+			if (this.isQuotaExceededError({ error })) {
+				throw new StorageQuotaExceededError({ requiredBytes: file.size });
+			}
+			throw error;
+		}
+		await mediaMetadataAdapter.set({ key: metadata.id, value: metadata });
+	}
+
+	async mergeSavedSounds({ sounds }: { sounds: SavedSound[] }): Promise<void> {
+		if (sounds.length === 0) return;
+		const currentData = await this.loadSavedSounds();
+		const existingIds = new Set(currentData.sounds.map((sound) => sound.id));
+		const added = sounds.filter((sound) => !existingIds.has(sound.id));
+		if (added.length === 0) return;
+		await this.savedSoundsAdapter.set({
+			key: "user-sounds",
+			value: {
+				sounds: [...currentData.sounds, ...added],
+				lastModified: new Date().toISOString(),
+			},
+		});
+	}
+
 	isOPFSSupported(): boolean {
 		return OPFSAdapter.isSupported();
 	}

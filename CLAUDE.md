@@ -36,4 +36,4 @@ Local CapCut-style video editor for macOS, built on OpenCut's `pre-rewrite` snap
 - macOS blocks Finder-launched apps from reading `~/Downloads`; that's why the installer copies the built editor and service into Application Support.
 - The service binds to 127.0.0.1 only; `/files/*` serves media folders only (never `settings.json`).
 - In the browser-pane test tool, Radix `Select` items need keyboard selection (Enter); real clicks work.
-- Projects made before the Electron app (in a Chrome window at `localhost:3517`) live in Chrome's profile; a migration/import task was in progress.
+- Projects made before the Electron app (in a Chrome window at `localhost:3517`) live in Chrome's profile. Move them with **Move projects** on the projects page: Export all in Chrome (app running so the server is up), Import in the app. Bundle format: `apps/web/src/services/storage/project-bundle.ts` (`.kutkap`; raw records + media, IDs kept, existing projects skipped).
