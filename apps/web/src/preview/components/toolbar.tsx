@@ -24,6 +24,7 @@ import {
 import { PREVIEW_ZOOM_PRESETS } from "@/preview/zoom";
 import { usePreviewViewport } from "./preview-viewport";
 import { GridPopover } from "./guide-popover";
+import { RatioSelect } from "./ratio-select";
 import { usePreviewStore } from "@/preview/preview-store";
 import {
 	Tooltip,
@@ -42,6 +43,8 @@ export function PreviewToolbar({
 			<TimecodeDisplay />
 			<PlayPauseButton />
 			<div className="justify-self-end flex items-center gap-2.5">
+				<RatioSelect />
+				<Separator orientation="vertical" className="h-4" />
 				<ZoomSelect />
 				<Separator orientation="vertical" className="h-4" />
 				{/* v0.4.0 */}

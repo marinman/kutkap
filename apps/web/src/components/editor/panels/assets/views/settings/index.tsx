@@ -22,12 +22,12 @@ import { BackgroundContent } from "./background";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { NumberField } from "@/components/ui/number-field";
-import { useEditorStore } from "@/editor/editor-store";
 import { usePropertyDraft } from "@/components/editor/panels/properties/hooks/use-property-draft";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Tick02Icon } from "@hugeicons/core-free-icons";
 import { cn } from "@/utils/ui";
-import { dimensionToAspectRatio } from "@/utils/geometry";
+import { AspectRatioShape } from "@/canvas/components/aspect-ratio-shape";
+import { areCanvasSizesEqual, CANVAS_RATIO_PRESETS } from "@/canvas/sizes";
 import { formatNumberForDisplay } from "@/utils/math";
 import { OcSquarePlusIcon } from "@/components/icons";
 import type { TCanvasSize } from "@/project/types";
@@ -36,23 +36,6 @@ type SettingsView = "project-info" | "background";
 
 function isSettingsView(value: string): value is SettingsView {
 	return value === "project-info" || value === "background";
-}
-
-const PRESET_LABELS: Record<string, string> = {
-	"1:1": "1:1",
-	"16:9": "16:9",
-	"9:16": "9:16",
-	"4:3": "4:3",
-};
-
-function areCanvasSizesEqual({
-	left,
-	right,
-}: {
-	left: TCanvasSize;
-	right: TCanvasSize;
-}) {
-	return left.width === right.width && left.height === right.height;
 }
 
 function formatCanvasDimension({ value }: { value: number }) {
@@ -100,21 +83,12 @@ export function SettingsView() {
 	const [view, setView] = useState<SettingsView>("project-info");
 	const editor = useEditor();
 	const activeProject = useEditor((e) => e.project.getActive());
-	const { canvasPresets } = useEditorStore();
 	const currentCanvasSize = activeProject.settings.canvasSize;
 	const canvasSizeMode = activeProject.settings.canvasSizeMode ?? "preset";
 	const lastCustomCanvasSize =
 		activeProject.settings.lastCustomCanvasSize ?? null;
 
-	const presetItems = canvasPresets.map((preset, index) => {
-		const ratio = dimensionToAspectRatio(preset);
-		return {
-			id: index.toString(),
-			label: PRESET_LABELS[ratio] ?? ratio,
-			ratio,
-			canvasSize: preset,
-		};
-	});
+	const presetItems = CANVAS_RATIO_PRESETS;
 
 	const selectedPresetId = canvasSizeMode === "preset"
 		? (presetItems.find((preset) =>
@@ -274,7 +248,7 @@ export function SettingsView() {
 								<AspectRatioItem
 									key={preset.id}
 									label={preset.label}
-									previewIcon={<AspectRatioPreview ratio={preset.ratio} />}
+									previewIcon={<AspectRatioShape ratio={preset.ratio} />}
 									isSelected={selectedPresetId === preset.id}
 									onClick={() => {
 										selectPresetCanvasSize({
@@ -358,21 +332,5 @@ function AspectRatioItem({
 				<div className="w-full pb-2">{uiOptions}</div>
 			)}
 		</Button>
-	);
-}
-
-function AspectRatioPreview({ ratio }: { ratio?: string }) {
-	if (!ratio) return null;
-
-	const [w, h] = ratio.split(":").map(Number);
-	const maxSize = 16;
-	const width = w >= h ? maxSize : (w / h) * maxSize;
-	const height = h >= w ? maxSize : (h / w) * maxSize;
-
-	return (
-		<div
-			style={{ width, height, borderWidth: 1.5 }}
-			className="rounded-xs border-current opacity-60"
-		/>
 	);
 }
