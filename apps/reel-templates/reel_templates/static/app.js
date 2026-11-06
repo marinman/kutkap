@@ -190,21 +190,182 @@ function statsMarkup(template) {
     [`${p.hook_window_s ?? 0}s`, "Hook window"],
     [p.words_per_min || "—", "Words / min"],
     [template.audio.type, "Audio"],
+    ...(p.body_cuts_per_min != null
+      ? [
+          [p.hook_cuts_per_min, "Cuts / min in hook"],
+          [p.body_cuts_per_min, "Cuts / min after"],
+          [`${p.text_on_screen_pct}%`, "Text on screen"],
+          [p.first_word_at != null ? `${p.first_word_at}s` : "—", "First word at"],
+        ]
+      : []),
   ];
   return `<div class="stats">${items.map(([v, l]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("")}</div>`;
+}
+
+const compact = (n) =>
+  n == null ? "—" : Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+const seek = (t, label) =>
+  t == null ? "" : `<button type="button" class="time" data-seek="${Number(t)}">${esc(label ?? clock(t))}</button>`;
+const chips = (items, cls = "") => items.filter(Boolean).map((x) => `<span class="chip ${cls}">${esc(x)}</span>`).join("");
+
+function performanceMarkup(template) {
+  const s = template.stats;
+  if (!s) {
+    return `<div class="card muted">No view or like counts yet. Press <b>Refresh stats</b> to look them up.</div>`;
+  }
+  const d = template.stats_derived || {};
+  const items = [
+    [compact(s.views), "Views"],
+    [compact(s.likes), "Likes"],
+    [compact(s.comments), "Comments"],
+    [compact(s.shares), "Shares"],
+    [d.engagement_rate != null ? `${d.engagement_rate}%` : "—", "Engagement"],
+    [compact(s.followers), "Followers"],
+    [d.views_per_follower != null ? `${d.views_per_follower}×` : "—", "Views / follower"],
+    [d.views_per_day != null ? compact(d.views_per_day) : "—", "Views / day"],
+  ];
+  const posted = s.posted_at ? new Date(s.posted_at).toLocaleDateString(undefined, { dateStyle: "medium" }) : "";
+  return `
+    <div class="stats">${items.map(([v, l]) => `<div class="stat"><b>${esc(v)}</b><span>${esc(l)}</span></div>`).join("")}</div>
+    <div class="muted small">${[s.uploader && `by ${s.uploader}`, posted && `posted ${posted}`, s.sound && `sound: ${s.sound}`,
+      `checked ${new Date(s.fetched_at).toLocaleString()}`].filter(Boolean).map(esc).join(" · ")}</div>
+    ${s.hashtags?.length ? `<div>${chips(s.hashtags.slice(0, 12).map((h) => `#${h}`))}</div>` : ""}`;
+}
+
+function hookMarkup(template) {
+  const h = template.hook;
+  const ai = template.ai?.status === "ok" ? template.ai.hook : null;
+  const strength = h.strength ?? null;
+  return `
+    <div class="card stack insight">
+      <div class="row">
+        <h3 class="grow">🪝 Hook <span class="muted">0:00–${clock(h.end ?? h.hook_window_s ?? 3)}</span></h3>
+        ${strength != null ? `<span class="meter" title="Hook strength from measured signals"><i style="width:${strength}%"></i></span><b>${strength}</b>` : ""}
+      </div>
+      <blockquote>${esc(ai?.line || h.spoken || h.spoken_hook || "No spoken hook")}</blockquote>
+      ${h.on_screen || h.first_3s_text ? `<div><span class="label">On screen</span> ${esc(h.on_screen || h.first_3s_text)}</div>` : ""}
+      <div>${chips([ai?.pattern || h.type], "hook")}${chips((h.patterns || []).filter((p) => p !== ai?.pattern))}</div>
+      ${ai?.why_it_works ? `<p>${esc(ai.why_it_works)}</p>` : ""}
+      ${h.signals?.length ? `<ul class="signals">${h.signals.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    </div>`;
+}
+
+function loopsMarkup(template) {
+  const aiLoops = template.ai?.status === "ok" ? template.ai.loops || [] : null;
+  const found = template.loops?.open || [];
+  const rewatch = template.loops?.rewatch;
+  const rows = aiLoops?.length
+    ? aiLoops.map(
+        (l, i) => `<li>
+          <div class="row"><b>Loop ${i + 1}</b>${seek(l.opens_at)}<span class="muted">opens</span>
+            ${l.pays_off_at != null ? `→ ${seek(l.pays_off_at)}<span class="muted">pays off</span>` : `<span class="chip warn">never closed</span>`}</div>
+          <div>“${esc(l.opening_line)}”</div>
+          <div class="muted">Viewer waits for: ${esc(l.viewer_waits_for)}</div>
+          ${l.payoff ? `<div class="muted">Payoff: ${esc(l.payoff)}</div>` : ""}
+        </li>`,
+      )
+    : found.map(
+        (l, i) => `<li>
+          <div class="row"><b>Loop ${i + 1}</b><span class="chip">${esc(l.kind)}</span>${seek(l.opens_at)}<span class="muted">opens</span>
+            ${l.closes_at != null ? `→ ${seek(l.closes_at)}<span class="muted">pays off after ${l.held_for_s}s</span>` : `<span class="chip warn">no clear payoff</span>`}</div>
+          <div>“${esc(l.opening_line)}”</div>
+          ${l.payoff_line ? `<div class="muted">Payoff: “${esc(l.payoff_line)}”</div>` : ""}
+        </li>`,
+      );
+  return `
+    <div class="card stack insight">
+      <h3>🔁 Loops</h3>
+      ${rows.length ? `<ol class="loops">${rows.join("")}</ol>` : `<div class="muted">No open loops found: nothing in the script makes the viewer wait for an answer.</div>`}
+      ${
+        rewatch
+          ? `<div class="sub"><div class="row"><b>Rewatch loop</b><span class="chip ${rewatch.verdict === "no loop" ? "" : "hook"}">${esc(rewatch.verdict)}</span></div>
+             ${template.ai?.rewatch_loop && template.ai.rewatch_loop.trim().toLowerCase() !== rewatch.verdict ? `<p>${esc(template.ai.rewatch_loop)}</p>` : ""}
+             <ul class="signals">${(rewatch.reasons || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>`
+          : ""
+      }
+    </div>`;
+}
+
+function ctaMarkup(template) {
+  const cta = template.cta;
+  if (!cta) return "";
+  const ai = template.ai?.status === "ok" ? template.ai.cta : null;
+  const p = cta.primary;
+  const others = (cta.all || []).filter((c) => c !== p && !(p && c.text === p.text && c.type === p.type));
+  return `
+    <div class="card stack insight">
+      <div class="row"><h3 class="grow">📣 Call to action</h3>${ai?.strength ? `<span class="chip ${ai.strength === "strong" ? "hook" : ai.strength === "none" || ai.strength === "weak" ? "warn" : ""}">${esc(ai.strength)}</span>` : ""}</div>
+      ${
+        p || ai?.line
+          ? `<div class="row">${chips([ai?.ask || p?.type], "hook")}${p ? `<span class="muted">${esc(p.source)}</span>${seek(p.at)}` : ""}</div>
+             <blockquote>${esc(ai?.line || p.text)}</blockquote>`
+          : `<div class="muted">${esc(cta.note || "No call to action found.")}</div>`
+      }
+      ${ai?.suggestion ? `<div><span class="label">Try</span> ${esc(ai.suggestion)}</div>` : ""}
+      ${others.length ? `<details><summary class="muted">${others.length} more</summary><ul class="signals">${others.map((c) => `<li>${esc(c.type)} · ${esc(c.source)} ${c.at != null ? clock(c.at) : ""}: ${esc(c.text)}</li>`).join("")}</ul></details>` : ""}
+    </div>`;
+}
+
+function structureMarkup(template) {
+  const beats = template.structure;
+  if (!beats?.length) return "";
+  const total = template.format.duration_s || 1;
+  return `
+    <div class="beats">${beats
+      .map((b) => `<button type="button" class="beat beat-${esc(b.beat.toLowerCase())}" data-seek="${b.start}" style="flex:${Math.max(b.end - b.start, total * 0.04)}" title="${esc(b.beat)} ${clock(b.start)}–${clock(b.end)}"><b>${esc(b.beat)}</b><small>${clock(b.start)}</small></button>`)
+      .join("")}</div>`;
+}
+
+function whyMarkup(template) {
+  const ai = template.ai;
+  if (!ai) return "";
+  if (ai.status !== "ok") return `<div class="notice">${esc(ai.message)}</div>`;
+  return `
+    <div class="card stack insight">
+      <h3>✨ Why it works <span class="muted small">${esc(ai.model)}, on this Mac</span></h3>
+      <ul>${(ai.why_it_works || []).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+      ${ai.what_to_copy ? `<div><span class="label">Copy this</span> ${esc(ai.what_to_copy)}</div>` : ""}
+    </div>`;
+}
+
+async function runTemplateJob(path, button, status) {
+  button.disabled = true;
+  try {
+    const { job_id } = await api(path, { method: "POST" });
+    await pollJob(job_id, (job) => (status.innerHTML = progressMarkup(job)));
+    return true;
+  } catch (error) {
+    status.innerHTML = `<div class="error">${esc(error.message)}</div>`;
+    button.disabled = false;
+    return false;
+  }
 }
 
 async function renderAnalysis(id) {
   const template = await api(`/api/templates/${id}`);
   const isVideo = template.shots.length > 0;
+  const isOld = !template.analyzed_at;
   view.innerHTML = `
     <div class="row" style="margin-bottom:16px">
       <div class="grow"><h1>${esc(template.title)}</h1><a class="muted" href="${esc(template.source_url)}" target="_blank" rel="noopener noreferrer">${esc(template.source_url)}</a></div>
+      <button type="button" id="refresh-stats">Refresh stats</button>
+      <button type="button" id="reanalyze">Re-analyze</button>
       <a class="button primary" href="#/template/${esc(id)}">Edit template →</a>
     </div>
+    <div id="job-status"></div>
+    ${isOld ? `<div class="notice">This was analyzed before the hook, loop and CTA breakdown existed. Press <b>Re-analyze</b> to get it.</div>` : ""}
     <div class="${isVideo ? "analysis" : ""}">
       ${isVideo ? `<video id="player" src="${fileUrl(template.source_file)}" controls playsinline></video>` : `<audio id="player" src="${fileUrl(template.source_file)}" controls style="width:100%"></audio>`}
-      <div>
+      <div class="stack">
+        <h2>Performance</h2>
+        ${performanceMarkup(template)}
+        ${template.structure ? `<h2>Structure</h2>${structureMarkup(template)}` : ""}
+        <h2>Breakdown</h2>
+        ${hookMarkup(template)}
+        ${template.loops ? loopsMarkup(template) : ""}
+        ${ctaMarkup(template)}
+        ${whyMarkup(template)}
+        <h2>Pacing</h2>
         ${statsMarkup(template)}
         ${
           isVideo
@@ -214,7 +375,7 @@ async function renderAnalysis(id) {
                  .map(
                    (s) => `<button class="frame" data-seek="${s.start}">
                       <img src="${fileUrl(s.keyframe)}" alt="Shot ${s.n}" loading="lazy" />
-                      <small>#${s.n} · ${clock(s.start)} · ${s.duration}s</small>
+                      <small>#${s.n}${s.role ? ` · ${esc(s.role)}` : ""} · ${clock(s.start)} · ${s.duration}s</small>
                     </button>`,
                  )
                  .join("")}</div>`
@@ -236,6 +397,23 @@ async function renderAnalysis(id) {
       player.play();
     }),
   );
+
+  const status = view.querySelector("#job-status");
+  view.querySelector("#reanalyze").addEventListener("click", async (event) => {
+    if (await runTemplateJob(`/api/templates/${id}/reanalyze`, event.currentTarget, status)) renderAnalysis(id);
+  });
+  view.querySelector("#refresh-stats").addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    status.innerHTML = `<div class="muted">Looking up the latest numbers…</div>`;
+    try {
+      await api(`/api/templates/${id}/stats`, { method: "POST" });
+      renderAnalysis(id);
+    } catch (error) {
+      status.innerHTML = `<div class="error">${esc(error.message)}</div>`;
+      button.disabled = false;
+    }
+  });
 }
 
 // --- Template --------------------------------------------------------------------
@@ -387,6 +565,7 @@ async function renderLibrary() {
               <span class="chip">${esc(t.pacing.shots)} shots</span>
               <span class="chip">${esc(t.pacing.cuts_per_min)} cuts/min</span>
               <span class="chip">${esc(t.audio_type)}</span>
+              ${t.views != null ? `<span class="chip">${esc(compact(t.views))} views</span>` : ""}
             </div>
           </a>`,
           )
@@ -422,7 +601,7 @@ async function renderSettings() {
         </div>
       </div>
       <div class="card stack">
-        <label class="row"><input type="checkbox" name="llm_enabled" ${settings.llm_enabled ? "checked" : ""} /> <b>AI shot labeling</b> <span class="muted">(optional, off by default; runs on your local Ollama, nothing leaves this computer)</span></label>
+        <label class="row"><input type="checkbox" name="llm_enabled" ${settings.llm_enabled ? "checked" : ""} /> <b>AI breakdown</b> <span class="muted">(explains the hook, loops and CTA and labels shots; runs on your local Ollama, nothing leaves this computer, skipped if Ollama isn't running)</span></label>
         <div class="grid-2">
           <label class="field"><span>Ollama model</span><select name="ollama_model" id="ollama-model"><option>${esc(settings.ollama_model)}</option></select></label>
           <label class="field"><span>Ollama address</span><input type="text" name="ollama_url" value="${esc(settings.ollama_url)}" /></label>

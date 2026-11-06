@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import store
+from . import downloader, insights, store
 from .config import DATA_DIR, FRAMES_DIR, TEMPLATES_DIR, load_settings, relative_to_data
 from .jobs import UserFacingError, update_job
 
@@ -229,10 +229,21 @@ def ocr_keyframe(image: Path) -> list[dict]:
         right = max(float(w["left"]) + float(w["width"]) for w in words)
         bottom = max(float(w["top"]) + float(w["height"]) for w in words)
         text = " ".join(w["text"].strip() for w in words)
-        if len(text) < 3:
+        if not _looks_like_text(text):
             continue
         found.append({"text": text, "position": _position((left + right) / 2 / page_w, (top + bottom) / 2 / page_h)})
     return found
+
+
+# Editing-app watermarks and platform UI that OCR picks up but nobody wrote.
+OCR_IGNORED_WORDS = {"kapwing", "capcut", "inshot", "tiktok", "instagram", "reels", "youtube", "shorts", "vn", "splice"}
+
+
+def _looks_like_text(text: str) -> bool:
+    """Drops OCR noise: stray letters, symbols and watermarks."""
+    words = [re.sub(r"[^A-Za-z0-9']", "", w) for w in text.split()]
+    real = [w for w in words if (len(w) >= 3 or w.isdigit()) and w.lower() not in OCR_IGNORED_WORDS and re.search(r"[aeiouyAEIOUY0-9]", w)]
+    return len(real) >= 2 or (len(real) == 1 and len(real[0]) >= 5)
 
 
 def _position(x: float, y: float) -> str:
@@ -241,9 +252,25 @@ def _position(x: float, y: float) -> str:
     return f"{vertical}-{horizontal}"
 
 
+def ocr_at(path: Path, at: float, target: Path) -> list[str]:
+    """OCR a single extra frame (hook and ending), returning just the text."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    _run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", f"{max(at, 0):.3f}", "-i", str(path),
+        "-frames:v", "1", "-vf", "scale='min(720,iw)':-2", "-q:v", "3", str(target),
+    ])
+    texts = [block["text"] for block in ocr_keyframe(target)]
+    target.unlink(missing_ok=True)
+    return texts
+
+
 # Template ---------------------------------------------------------------------
 
-def analyze(job_id: str, download_id: str) -> dict:
+# Fields a person may have edited; kept when a template is re-analyzed.
+PRESERVED_ON_REANALYZE = ("saved", "title", "reuse_notes", "caption_style")
+
+
+def analyze(job_id: str, download_id: str, template_id: str | None = None) -> dict:
     record = store.get_download(download_id)
     if not record:
         raise UserFacingError("That download no longer exists.")
@@ -251,7 +278,8 @@ def analyze(job_id: str, download_id: str) -> dict:
     if not source.exists():
         raise UserFacingError("The downloaded file is missing from the downloads folder.")
 
-    template_id = str(uuid.uuid4())
+    previous = store.get_template(template_id) if template_id else None
+    template_id = template_id or str(uuid.uuid4())
     frames_dir = FRAMES_DIR / template_id
 
     update_job(job_id, progress=5, message="Reading video info…")
@@ -259,7 +287,19 @@ def analyze(job_id: str, download_id: str) -> dict:
     duration = meta["duration_s"]
     is_video = meta["has_video"] and record["format"] == "video"
 
+    stats = record.get("stats")
+    if not stats:
+        update_job(job_id, progress=8, message="Looking up views and likes…")
+        try:
+            stats = downloader.fetch_stats(record["source_url"])
+            store.upsert_download({**record, "stats": stats})
+        except Exception as error:  # noqa: BLE001 - stats are a bonus, never block analysis
+            print(f"Stats lookup failed: {error}")
+            stats = None
+
     shots: list[dict] = []
+    hook_text: list[str] = []
+    tail_text: list[str] = []
     if is_video:
         update_job(job_id, progress=15, message="Finding cuts…")
         shots = detect_shots(source, duration)
@@ -269,6 +309,11 @@ def analyze(job_id: str, download_id: str) -> dict:
         for shot in shots:
             shot["on_screen_text"] = ocr_keyframe(DATA_DIR / shot["keyframe"]) if shot["keyframe"] else []
             shot.update({"role": "", "notes": ""})
+        # Keyframes sit mid-shot, so read the opening and closing moments too.
+        hook_text = [t for at in (0.3, 1.5) if at < duration for t in ocr_at(source, at, frames_dir / "_ocr.jpg")]
+        hook_text += [b["text"] for s in shots if s["start"] < HOOK_SECONDS for b in s["on_screen_text"]]
+        if duration > 3:
+            tail_text = ocr_at(source, duration - 1.0, frames_dir / "_ocr.jpg")
 
     segments: list[dict] = []
     audio_type = "music"
@@ -278,20 +323,23 @@ def analyze(job_id: str, download_id: str) -> dict:
         samples = load_audio(source)
         segments = transcribe(samples)
         audio_type = classify_audio(samples, segments)
-        update_job(job_id, progress=88, message="Saving soundtrack…")
+        update_job(job_id, progress=82, message="Saving soundtrack…")
         soundtrack = extract_soundtrack(source, TEMPLATES_DIR / "audio" / f"{template_id}.m4a")
 
-    spoken_hook = " ".join(w["word"] for s in segments for w in s["words"] if w["start"] < HOOK_SECONDS).strip()
-    first_3s_text = " / ".join(
-        block["text"] for shot in shots if shot["start"] < HOOK_SECONDS for block in shot["on_screen_text"]
-    )
+    update_job(job_id, progress=86, message="Breaking down the hook, loops and CTA…")
+    hook = insights.analyze_hook(segments, shots, hook_text, duration)
+    loops = insights.find_open_loops(segments, duration)
+    rewatch = insights.analyze_rewatch_loop(source, duration, segments, is_video)
+    cta = insights.find_ctas(segments, shots, tail_text, (stats or {}).get("description", ""), duration)
+
     cut_count = max(len(shots) - 1, 0)
     pacing = {
         "shots": len(shots),
         "cuts_per_min": round(cut_count / duration * 60, 1) if duration else 0,
         "avg_shot_s": round(duration / len(shots), 2) if shots else 0,
-        "hook_window_s": shots[0]["duration"] if shots else round(min(duration, HOOK_SECONDS), 2),
+        "hook_window_s": hook["end"],
         **speech_pacing(segments, duration),
+        **insights.retention_signals(shots, segments, hook, duration),
     }
     caption_positions = sorted({b["position"] for s in shots for b in s["on_screen_text"]})
 
@@ -303,6 +351,7 @@ def analyze(job_id: str, download_id: str) -> dict:
         "source_file": record["file"],
         "soundtrack_file": soundtrack,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "analyzed_at": datetime.now(timezone.utc).isoformat(),
         "title": record["title"],
         "format": {
             "duration_s": duration,
@@ -310,7 +359,16 @@ def analyze(job_id: str, download_id: str) -> dict:
             "resolution": meta.get("resolution", ""),
             "fps": meta.get("fps", 0),
         },
-        "hook": {"type": "", "first_3s_text": first_3s_text, "spoken_hook": spoken_hook},
+        "stats": stats,
+        "hook": {
+            "type": ", ".join(p for p in hook["patterns"] if p != "direct address")[:60],
+            "first_3s_text": hook["on_screen"],
+            "spoken_hook": hook["spoken"],
+            **hook,
+        },
+        "loops": {"open": loops, "rewatch": rewatch},
+        "cta": cta,
+        "structure": insights.build_structure(hook, loops, cta, duration),
         "pacing": pacing,
         "shots": shots,
         "audio": {
@@ -320,15 +378,19 @@ def analyze(job_id: str, download_id: str) -> dict:
         },
         "caption_style": {"position": ", ".join(caption_positions), "notes": ""},
         "reuse_notes": "",
+        "ai": None,
     }
+    if previous:
+        template["created_at"] = previous.get("created_at", template["created_at"])
+        template.update({k: previous[k] for k in PRESERVED_ON_REANALYZE if k in previous})
 
     settings = load_settings()
     if settings["llm_enabled"]:
-        update_job(job_id, progress=92, message=f"Labeling shots with {settings['ollama_model']}…")
+        update_job(job_id, progress=90, message=f"Writing the breakdown with {settings['ollama_model']} (local)…")
         from .llm import label_template
 
         label_template(template, settings["ollama_url"], settings["ollama_model"])
 
     store.save_template(template)
-    store.upsert_download({**record, "template_id": template_id})
+    store.upsert_download({**(store.get_download(download_id) or record), "template_id": template_id})
     return {"template_id": template_id}

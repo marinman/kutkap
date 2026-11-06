@@ -22,8 +22,8 @@ DEFAULT_SETTINGS = {
     "whisper_model": "small",
     # Model for Kutkap editor captions: accuracy matters more than speed here.
     "caption_model": "small",
-    # Optional shot labeling with a local Ollama model. Off by default; the app works fully without it.
-    "llm_enabled": False,
+    # AI breakdown with a local Ollama model (nothing leaves this computer). Skipped if Ollama isn't running.
+    "llm_enabled": True,
     "ollama_url": "http://localhost:11434",
     "ollama_model": "qwen3:8b",
 }

@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 import yt_dlp
 
 from . import store
+from .insights import stats_from_info
 from .config import CAPTURES_DIR, DOWNLOADS_DIR, load_settings, relative_to_data
 from .jobs import UserFacingError, update_job
 
@@ -131,9 +132,23 @@ def download(job_id: str, url: str, media_format: str) -> dict:
         "thumbnail": info.get("thumbnail"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "template_id": None,
+        "stats": stats_from_info(info),
     }
     store.upsert_download(record)
     return {"download_id": record["id"]}
+
+
+def fetch_stats(url: str) -> dict:
+    """Re-reads a post's public numbers (views, likes, comments…) without downloading it."""
+    options = _base_options("")
+    options.pop("progress_hooks", None)
+    options["skip_download"] = True
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except yt_dlp.utils.DownloadError as error:
+        raise UserFacingError(_friendly_error(error)) from error
+    return stats_from_info(info)
 
 
 def validate_capture_url(url: str) -> str:

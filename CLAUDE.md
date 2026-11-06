@@ -16,6 +16,7 @@ Local CapCut-style video editor for macOS, built on OpenCut's `pre-rewrite` snap
 
 - Captions: `apps/web/src/transcription/word-captions.ts`, `subtitles/caption-presets.ts`, `subtitles/components/assets-view.tsx`
 - Reel templates: service `reel_templates/{downloader,analyze,store,export,llm}.py` + static UI; editor tab `apps/web/src/templates/`
+- Reel breakdown (performance stats, hook, open loops, rewatch loop, CTA, beat structure): heuristics in `reel_templates/insights.py`, AI explanation via local Ollama in `llm.py` (on by default, skipped if Ollama isn't running). Re-analyze keeps a template's id, title and saved state
 - Media from link: `apps/web/src/media/components/url-capture.tsx`, `services/media-capture.ts`
 - Audio extraction / audio-only export: `apps/web/src/media/extract-audio.ts`, `components/editor/export-button.tsx`
 - Canvas ratio menu: `apps/web/src/canvas/sizes.ts`, `preview/components/ratio-select.tsx`

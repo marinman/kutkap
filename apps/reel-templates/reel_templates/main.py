@@ -13,7 +13,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import analyze, downloader, export, faceswap, llm, store
+from . import analyze, downloader, export, faceswap, insights, llm, store
 from .config import DATA_DIR, LONG_VIDEO_SECONDS, ensure_dirs, load_settings, save_settings
 from .jobs import UserFacingError, get_job, start_job
 
@@ -151,6 +151,7 @@ def _summary(template: dict) -> dict:
         "format": template["format"],
         "pacing": template["pacing"],
         "audio_type": template["audio"]["type"],
+        "views": (template.get("stats") or {}).get("views"),
         "soundtrack_file": template.get("soundtrack_file"),
         "keyframes": [s.get("keyframe") for s in template["shots"]],
         "shots": [{"n": s["n"], "start": s["start"], "duration": s["duration"], "role": s.get("role", "")}
@@ -161,13 +162,14 @@ def _summary(template: dict) -> dict:
 @app.get("/api/templates/{template_id}")
 def get_template(template_id: str):
     template = _load(template_id)
-    return template
+    # Ratios depend on today's date, so they're computed on read rather than stored.
+    return {**template, "stats_derived": insights.derived_stats(template.get("stats"))}
 
 
 @app.put("/api/templates/{template_id}")
 def update_template(template_id: str, body: dict):
     template = _load(template_id)
-    protected = {"id", "download_id", "source_file", "soundtrack_file", "created_at", "source_url"}
+    protected = {"id", "download_id", "source_file", "soundtrack_file", "created_at", "source_url", "stats_derived"}
     template.update({k: v for k, v in body.items() if k not in protected})
     store.save_template(template)
     return template
@@ -181,6 +183,33 @@ def delete_template(template_id: str):
     if record and record.get("template_id") == template_id:
         store.upsert_download({**record, "template_id": None})
     return {"ok": True}
+
+
+@app.post("/api/templates/{template_id}/reanalyze")
+def reanalyze_template(template_id: str):
+    """Re-runs the analysis on the same download, keeping the template's id, title and saved state."""
+    template = _load(template_id)
+    download_id = template.get("download_id", "")
+    if not store.get_download(download_id):
+        raise _error(404, "The original download is gone, so this template can't be re-analyzed.")
+    job_id = start_job("analyze", lambda jid: analyze.analyze(jid, download_id, template_id))
+    return {"job_id": job_id}
+
+
+@app.post("/api/templates/{template_id}/stats")
+def refresh_template_stats(template_id: str):
+    """Fetches the post's current views, likes and comments."""
+    template = _load(template_id)
+    try:
+        stats = downloader.fetch_stats(template["source_url"])
+    except UserFacingError as error:
+        raise _error(502, str(error)) from error
+    template["stats"] = stats
+    store.save_template(template)
+    record = store.get_download(template.get("download_id", ""))
+    if record:
+        store.upsert_download({**record, "stats": stats})
+    return template
 
 
 @app.get("/api/templates/{template_id}/export.{kind}")
