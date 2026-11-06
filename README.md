@@ -1,10 +1,24 @@
-# Kutkap
+# Kutkap 🎬
 
-A local, CapCut-style video editor that runs entirely on your machine: multi-track timeline, automatic captions, caption style templates, and one-click export.
+**The free CapCut alternative that runs 100% on your Mac.** No cloud, no subscription, no watermark. Your footage never leaves your computer.
+
+👉 **See a video or song you want?** Paste the link and the built-in downloader drops it straight into your project as MP4 or MP3.
+
+👉 **Swap faces in one click.** Built-in face swapping, powered by FaceFusion running on your own machine.
+
+👉 **Captions that hit every word.** Auto captions timed to the exact moment each word is spoken, in five scroll-stopping styles.
+
+👉 **Steal the structure, not the content.** Paste any viral reel and Kutkap maps every cut, the hook and the pacing into a template you can drop your own clips into.
+
+👉 **Rip the audio from anything.** Pull a clip's sound onto its own track, or export audio only.
+
+👉 **Every format, one tap.** Switch between 9:16, 1:1, 16:9 and more right under the preview.
+
+👉 **A real Mac app.** Its own window, Dock icon and menu bar. Double-click and edit.
 
 Kutkap is built on [OpenCut](https://github.com/OpenCut-app/OpenCut) (MIT), starting from its `pre-rewrite` snapshot, the last version with the full web editor.
 
-## Features
+## Features in detail
 
 - **Timeline editor**: multi-track video, audio, text, stickers, effects and transitions
 - **Auto captions**: faster-whisper on your machine with per-word timestamps, so each 1–4 word caption appears exactly when it's spoken (falls back to in-browser Whisper if the local service isn't running)
